@@ -192,3 +192,12 @@ def test_lookup_api_failure_returns_502(client):
     with patch("app.openfoodfacts.fetch_by_barcode", side_effect=ExternalAPIError("down")):
         response = client.get("/lookup?barcode=999")
     assert response.status_code == 502
+
+
+def test_add_item_rejects_non_numeric_barcode(client):
+    response = client.post(
+        "/inventory",
+        json={"barcode": "nutella", "product_name": "X", "price": 1, "stock": 1},
+    )
+    assert response.status_code == 400
+    assert "barcode" in response.get_json()["error"]
