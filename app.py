@@ -1,5 +1,7 @@
 from flask import Flask, jsonify, request
 
+import openfoodfacts
+
 app = Flask(__name__)
 
 
@@ -37,6 +39,8 @@ inventory = [
 
 # Fields a client is allowed to set or change
 EDITABLE_FIELDS = {"barcode", "product_name", "brands", "ingredients_text", "price", "stock"}
+# Fields we can fill in from OpenFoodFacts
+API_FIELDS = {"product_name", "brands", "ingredients_text"}
 
 def find_item(item_id):
     """Return the item with this id, or None if not found."""
@@ -85,8 +89,21 @@ def add_item():
     item = {"id": next_id()}
     for field in EDITABLE_FIELDS:
         item[field] = data.get(field,"")
-    item["price"] = data["price"]
-    item["stock"] = data["stock"]
+
+    # Enrich with OpenFoodFacts data when a barcode is given.
+    # Values the user typed always win; the API only fills the blanks.
+    if item["barcode"]:
+        try:
+            product = openfoodfacts.fetch_by_barcode(item["barcode"])
+        except openfoodfacts.ExternalAPIError:
+            product = None # APi down: carry on with what the user gave us
+        if product:
+            for field in API_FIELDS:
+                if not item[field]:  # only fill in if the user didn't provide a value
+                    item[field] = product.get(field, "")
+
+    if not item["product_name"]:
+        return jsonify({"error": "Could not find product name for this barcode."}), 400
 
     inventory.append(item)
     return jsonify(item), 201
@@ -107,8 +124,8 @@ def update_item(item_id):
         return jsonify({"error": error}), 400
 
     for field in EDITABLE_FIELDS:
-        if field in data:
-            item[field] = data[field]
+        if field in EDITABLE_FIELDS:
+            item[field] = value
 
     return jsonify(item), 200
 
@@ -119,7 +136,28 @@ def delete_item(item_id):
         return jsonify({"error": "Item not found"}), 404
 
     inventory.remove(item)
-    return jsonify({"message": "Item deleted"}), 200
+    return jsonify({"message": f"Item {item['id']} deleted"}), 200
 
+@app.route("/lookup", methods=["GET"])
+def lookup():
+    """Search OpenFoodFacts by ?barcode= or ?name=."""
+    barcode = request.args.get("barcode", "").strip()
+    name = request.args.get("name", "").strip()
+
+    if not barcode and not name:
+        return jsonify({"error": "Provide a 'barcode' or 'name' query parameter."}), 404
+
+    try:
+        if barcode:
+            product = openfoodfacts.fetch_by_barcode(barcode)
+            if product is None:
+                return jsonify({"error": "Product not found on OpenFoodFacts"}), 404
+            return jsonify(product), 200
+
+        results = openfoodfacts.search_by_name(name)
+        return jsonify({"results": results}), 200
+    except openfoodfacts.ExternalAPIError as exc:
+        return jsonify({"error": str(exc)}), 502 # 502 = bad gateway, i.e. upstream API Failed
+    
 if __name__ == "__main__":
     app.run(debug=True)
