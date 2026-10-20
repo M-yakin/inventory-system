@@ -90,6 +90,10 @@ def add_item():
     if error:
         return jsonify({"error": error}), 400
 
+    barcode = str(data.get("barcode", "")).strip()
+    if barcode and not barcode.isdigit():
+        return jsonify({"error": "barcode must contain digits only"}), 400
+
     item = {"id": next_id()}
     for field in EDITABLE_FIELDS:
         item[field] = data.get(field, "")
