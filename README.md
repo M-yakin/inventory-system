@@ -150,3 +150,8 @@ The tests use `unittest.mock` to simulate OpenFoodFacts, so they run offline and
 ## Data source
 
 Product data comes from the [OpenFoodFacts API](https://openfoodfacts.github.io/openfoodfacts-server/api/). Requests identify themselves with a `User-Agent` header, which OpenFoodFacts requires.
+
+## Manual API testing
+
+All five CRUD routes and the `/lookup` route were validated with Postman and `curl`
+while running Flask in debug mode (`debug=True`), in addition to the automated pytest suite.
